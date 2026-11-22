@@ -1,0 +1,11 @@
+[profile.default]
+src = "contracts"
+test = "test"
+out = "out"
+cache_path = "cache"
+solc_version = "0.8.24"
+evm_version = "shanghai"
+
+[rpc_endpoints]
+hsk_testnet = "https://testnet.hsk.xyz"
+hsk_mainnet = "https://mainnet.hsk.xyz"

@@ -1,0 +1,10 @@
+{
+  "name": "agentpay-escrow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AgentPay Escrow — agent-to-agent jobs with escrowed HSK payment and HSP payment mandates on HashKey Chain",
+  "dependencies": {
+    "ethers": "^6.13.4"
+  }
+}

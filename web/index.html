@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentPay Escrow — live jobs</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 860px; padding: 0 1rem; background: #0b0e14; color: #e6e6e6; }
+  h1 { font-size: 1.4rem; } .sub { color: #9aa4b2; margin-bottom: 1.5rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  th, td { border-bottom: 1px solid #232a35; padding: .5rem .4rem; text-align: left; vertical-align: top; }
+  th { color: #9aa4b2; font-weight: 600; }
+  .mono { font-family: ui-monospace, monospace; font-size: .8rem; word-break: break-all; }
+  .st { padding: .1rem .5rem; border-radius: 1rem; background: #1c2534; }
+  .err { color: #ff8080; }
+</style>
+</head>
+<body>
+<h1>AgentPay Escrow — live jobs</h1>
+<p class="sub">Read-only view of the AgentEscrow contract on HashKey Chain, loaded straight from the chain RPC. Set the contract with <span class="mono">?contract=0x…&amp;network=testnet|mainnet</span>.</p>
+<p id="status">Loading…</p>
+<table>
+  <thead><tr><th>Job</th><th>Buyer → Seller</th><th>Amount</th><th>State</th><th>Proof / HSP mandate</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<script>
+const NETWORKS = {
+  testnet: { rpc: "https://testnet.hsk.xyz", explorer: "https://testnet-explorer.hskchain.net" },
+  mainnet: { rpc: "https://mainnet.hsk.xyz", explorer: "https://hashkey.blockscout.com" },
+};
+const q = new URLSearchParams(location.search);
+const net = NETWORKS[q.get("network") || "testnet"];
+const contract = q.get("contract") || "";
+const STATES = ["Open", "Delivered", "Released", "Refunded"];
+let idc = 1;
+async function rpc(method, params) {
+  const r = await fetch(net.rpc, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: idc++, method, params }) });
+  const j = await r.json();
+  if (j.error) throw new Error(j.error.message);
+  return j.result;
+}
+const pad = (h) => h.replace("0x", "").padStart(64, "0");
+function decodeJob(hex) {
+  const w = (i) => hex.slice(2 + i * 64, 2 + (i + 1) * 64);
+  const addr = (i) => "0x" + w(i).slice(24);
+  const num = (i) => BigInt("0x" + w(i));
+  const strOff = Number(num(5)) * 2;
+  const strLen = Number(BigInt("0x" + hex.slice(2 + strOff, 2 + strOff + 64)));
+  const strHex = hex.slice(2 + strOff + 64, 2 + strOff + 64 + strLen * 2);
+  let mandate = "";
+  try { mandate = new TextDecoder().decode(Uint8Array.from(strHex.match(/../g).map((b) => parseInt(b, 16)))); } catch {}
+  return { buyer: addr(0), seller: addr(1), amount: num(2), deadline: num(3), proof: "0x" + w(4), mandate, state: Number(num(6)) };
+}
+async function main() {
+  const status = document.getElementById("status");
+  const rows = document.getElementById("rows");
+  if (!contract) { status.innerHTML = '<span class="err">No contract address given (?contract=0x…).</span>'; return; }
+  try {
+    const selRes = await rpc("eth_call", [{ to: contract, data: "0xb0c2aa5e" }, "latest"]).catch(() => null);
+    let count = 0;
+    if (selRes) count = Number(BigInt(selRes)) - 1;
+    if (!count) { // fall back: probe jobs(1..20)
+      count = 20;
+    }
+    let html = "", found = 0;
+    for (let i = 1; i <= count; i++) {
+      const data = "0x" + JOB_SEL + pad(i.toString(16));
+      const res = await rpc("eth_call", [{ to: contract, data }, "latest"]);
+      if (!res || res === "0x") continue;
+      const j = decodeJob(res);
+      if (j.buyer === "0x0000000000000000000000000000000000000000") continue;
+      found++;
+      const amt = Number(j.amount) / 1e18;
+      html += `<tr><td>#${i}</td>
+        <td class="mono">${j.buyer}<br>→ ${j.seller}</td>
+        <td>${amt} HSK</td>
+        <td><span class="st">${STATES[j.state]}</span></td>
+        <td class="mono">${j.state >= 1 ? j.proof.slice(0, 18) + "…" : "—"}<br>${j.mandate || ""}</td></tr>`;
+    }
+    status.textContent = found ? `${found} job(s) on ${contract}` : "No jobs yet.";
+    rows.innerHTML = html;
+  } catch (e) {
+    status.innerHTML = '<span class="err">Failed to load: ' + e.message + "</span>";
+  }
+}
+// jobs(uint256) function selector, keccak256("jobs(uint256)")[:4] — verified with cast sig
+const JOB_SEL = "180aedf3";
+main();
+</script>
+</body>
+</html>
